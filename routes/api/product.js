@@ -6,7 +6,7 @@ const Category = require('../../models/category');
 const auth = require('../../middleware/auth');
 const role = require('../../middleware/role');
 const { ROLES } = require('../../constants');
-const cloudinary = require('../../config/cloudinary');
+const { uploadImages } = require('../../utils/uploadImage');
 
 /**
  * Normalises a submitted GST percentage.
@@ -145,23 +145,12 @@ router.post('/add', auth, role.check(ROLES.Admin, ROLES.Merchant, ROLES.Member),
       return res.status(400).json({ error: offerError });
     }
 
-    // Upload images to Cloudinary
+    // Base64 from the admin becomes Cloudinary URLs; existing URLs pass through.
     const updatedVariants = [];
-
     for (const v of variants) {
-      let imageUrl = v.image;
-
-      if (v.image) {
-        const upload = await cloudinary.uploader.upload(v.image, {
-          folder: 'products'
-        });
-
-        imageUrl = upload.secure_url;
-      }
-
       updatedVariants.push({
         ...v,
-        image: imageUrl
+        images: await uploadImages(v.images, 'products')
       });
     }
 
@@ -229,24 +218,12 @@ router.put('/update/:id', auth, role.check(ROLES.Admin, ROLES.Merchant, ROLES.Me
     if (tax.value !== undefined) product.taxRate = tax.value;
     // if (variants !== undefined) product.variants = variants;
     if (variants !== undefined) {
+  // Base64 from the admin becomes Cloudinary URLs; existing URLs pass through.
   const updatedVariants = [];
-
   for (const v of variants) {
-    let imageUrl = v.image;
-
-    // ✅ If new image (base64), upload to Cloudinary
-    if (v.image && v.image.startsWith('data:image')) {
-      const upload = await cloudinary.uploader.upload(v.image, {
-        folder: 'products'
-      });
-
-      imageUrl = upload.secure_url;
-    }
-
-    // ✅ If already URL, keep as it is
     updatedVariants.push({
       ...v,
-      image: imageUrl
+      images: await uploadImages(v.images, 'products')
     });
   }
 
@@ -258,6 +235,7 @@ router.put('/update/:id', auth, role.check(ROLES.Admin, ROLES.Merchant, ROLES.Me
 
     res.status(200).json({ success: true, message: 'Product updated successfully!', product: updated });
   } catch (error) {
+    console.error(error);
     res.status(400).json({ error: 'Your request could not be processed. Please try again.' });
   }
 });
